@@ -214,7 +214,7 @@ void *mm_realloc(void *ptr, size_t size)
     newptr = mm_malloc(size);
     if (newptr == NULL)
       return NULL;
-    // get the size of the memory block minuz the header and footer
+    // get the size of the memory block minuz the header and footer.
     copySize = GET_SIZE(HDRP(oldptr)) -DSIZE;
     if (size < copySize)
       copySize = size;
@@ -317,6 +317,8 @@ void place(void * bp, size_t asize)
 
 int mm_check(void)
 {
+
+    
 
 
 
