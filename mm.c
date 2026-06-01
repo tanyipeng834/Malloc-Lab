@@ -89,11 +89,14 @@ static void * extend_heap(size_t words){
     if((long ) (bp = mem_sbrk(size))==-1){
         return NULL;
     }
-
+    // replace the old epilogue header
     PUT(HDRP(bp),PACK(size,0));
-
+    // put the footer into the block
     PUT(FTRP(bp),PACK(size,0));
+    // replace the new epilogue header
     PUT(HDRP(NEXT_BLKP(bp)),PACK(0,1));
+
+    // coalesce the block with the possible previous free block.
 
     return coalesce(bp);
 
@@ -112,6 +115,8 @@ static void * extend_heap(size_t words){
  */
 void *mm_malloc(size_t size)
 {
+
+    
     size_t newsize = ALIGN(size + DSIZE);
     char * bp;
     size_t expandsize;
@@ -128,6 +133,7 @@ void *mm_malloc(size_t size)
 
     if((bp=extend_heap(expandsize/WSIZE))==NULL)return NULL;
     place(bp,newsize);
+   
 
     return bp;
 
@@ -315,8 +321,42 @@ void place(void * bp, size_t asize)
 
 }
 
+
+
+
 int mm_check(void)
 {
+
+    void * bp;
+    
+
+    // check the prologue header and footer
+
+    if(GET(HDRP(heaplist_p))!=GET(FTRP(heaplist_p))){
+        return -1;
+    }
+
+    for(bp=NEXT_BLKP(heaplist_p);GET_SIZE(HDRP(bp))>0;bp=NEXT_BLKP(bp))
+    {
+        // check the case where the header and footer is aligned.
+        if(GET(HDRP(bp))!=GET(FTRP(bp))){
+            return -1;
+        }
+        // check if the payload area is aligned
+        size_t payloadSize = GET_SIZE(HDRP(bp));
+        // check if the payloads on the implicit list are aligned to 8 byte 
+        // boundaries
+        if(payloadSize%8!=0){
+            return -1;
+        }
+
+
+
+
+
+
+
+    }
 
     
 
@@ -326,6 +366,19 @@ int mm_check(void)
     return 0;
 
 
+
+
+}
+
+void mm_checkheap(int lineno){
+
+    if(mm_check()){
+        printf("Heap check failed in line %d\n",lineno);
+        exit(1);
+    }
+
+    exit(0);
+    
 
 
 }

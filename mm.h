@@ -8,6 +8,7 @@ static void* coalesce(void * bp);
 void * find_fit(size_t asize);
 void place(void * bp, size_t asize );
 static void * extend_heap(size_t words);
+void mm_checkheap(int lineno);
 
 
 static char* heaplist_p;
@@ -40,6 +41,8 @@ static char* heaplist_p;
 
 #define NEXT_BLKP(bp) ((char*)(bp) +GET_SIZE(HDRP((bp))))
 #define PREV_BLKP(bp) ((char*)(bp) - GET_SIZE((char*) bp -DSIZE))
+
+#define CHECKHEAP(lineno) printf("%s\n",__func__); mm_checkheap(__LINE__);
 /* 
  * Students work in teams of one or two.  Teams enter their team name, 
  * personal names and login IDs in a struct of this
