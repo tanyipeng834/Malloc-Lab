@@ -38,6 +38,7 @@ team_t team = {
 #define ALIGNMENT 8
 
 /* rounds up to the nearest multiple of ALIGNMENT */
+// align to the next bucket and then align to 8 bytes which is the alignment.
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
 
 
@@ -49,6 +50,59 @@ team_t team = {
 int mm_init(void)
 {
     
+    // given that we start the allocator at a page boundary 
+    // we would allocate 4 bytes for the padding, 4 bytes for prologue header and epilogue header
+   if ((heaplist_p=mem_sbrk(4*WSIZE))== (void *)-1){
+    return -1;
+
+   }
+   //4 bytes of padding for ensuring that header is 4 bytes aligned 
+   PUT(heaplist_p,0);
+   PUT(heaplist_p+WSIZE,PACK(DSIZE,1));
+   PUT(heaplist_p+2*WSIZE,PACK(DSIZE,1));
+
+   PUT(heaplist_p+WSIZE*3,PACK(0,1));
+   // This is to advance the heaplist pointer to the start of the free list.
+   heaplist_p +=2*WSIZE;
+  // extened the heap by the default heap size
+   if(extend_heap(CHUNKSIZE/WSIZE)==NULL){
+    return -1;
+   }
+
+   return 0;
+
+   
+   
+   
+
+
+}
+
+static void * extend_heap(size_t words){
+
+    char * bp;
+
+    size_t size;
+    // make sure that the 
+    size =(words%2) ? (words+1) *WSIZE : words * WSIZE *2 ;
+
+    if((long ) (bp = mem_sbrk(size))==-1){
+        return NULL;
+    }
+
+    PUT(HDRP(bp),PACK(size,0));
+
+    PUT(FTRP(bp),PACK(size,0));
+    PUT(HDRP(NEXT_BLKP(bp)),PACK(0,1));
+
+    return coalesce(bp);
+
+
+
+
+
+
+
 
 }
 
@@ -58,14 +112,25 @@ int mm_init(void)
  */
 void *mm_malloc(size_t size)
 {
-    int newsize = ALIGN(size + SIZE_T_SIZE);
-    void *p = mem_sbrk(newsize);
-    if (p == (void *)-1)
-	return NULL;
-    else {
-        *(size_t *)p = size;
-        return (void *)((char *)p + SIZE_T_SIZE);
+    size_t newsize = ALIGN(size + SIZE_T_SIZE);
+    char * bp;
+    size_t expandsize;
+
+    if(size ==0) return NULL;
+
+    if((bp=find_fit(newsize))!=NULL){
+        place(bp,newsize);
+        return bp;
     }
+    // expand by the maximum of new size and chunk size
+    expandsize = MAX(newsize,CHUNKSIZE);
+
+
+    if((bp=extend_heap(expandsize/WSIZE))==NULL)return NULL;
+    place(bp,newsize);
+
+    return bp;
+
 }
 
 /*
@@ -73,6 +138,68 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *ptr)
 {
+    size_t size = GET_SIZE(HDRP(ptr));
+    PUT(HDRP(ptr),PACK(size,0));
+    PUT(FTRP(ptr),PACK(size,0));
+    coalesce(ptr);
+
+
+}
+
+static void* coalesce(void * bp){
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+    size_t block_size = GET_SIZE(HDRP(bp));
+    // case 1 where both the next block and previous block are
+    // allocated
+    if(prev_alloc && next_alloc ){
+        return bp;
+    }
+    // case 2 where the next block is free
+
+    else if(prev_alloc && !next_alloc){
+       block_size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
+       PUT(HDRP(bp),PACK(block_size,0));
+       PUT(FTRP(bp),PACK(block_size,0));
+
+
+
+    }
+
+    // case where previous block is free
+
+    else if(!prev_alloc && next_alloc){
+        // adding the block size from the previous block
+        block_size += GET_SIZE(HDRP(PREV_BLKP(bp)));
+        PUT(HDRP(PREV_BLKP(bp)),PACK(block_size,0));
+        PUT(FTRP(bp),PACK(block_size,0));
+        bp = PREV_BLKP(bp);
+
+
+        
+
+
+    }
+
+    else
+    {   // for this case, we have the previous and next block which is free
+        block_size +=(GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(HDRP(NEXT_BLKP(bp))));
+        PUT(HDRP(PREV_BLKP(bp)),PACK(block_size,0));
+        PUT(FTRP(NEXT_BLKP(bp)),PACK(block_size,0));
+        bp = PREV_BLKP(bp);
+
+
+
+
+
+
+    }
+
+    return bp;
+
+
+  
+
 }
 
 /*
@@ -94,6 +221,76 @@ void *mm_realloc(void *ptr, size_t size)
     mm_free(oldptr);
     return newptr;
 }
+
+
+// 
+void * find_fit(size_t asize)
+{
+    // first block in the 
+    char * bp = heaplist_p + WSIZE;
+    size_t block_size;
+
+
+
+    while((block_size=GET_SIZE(HDRP(bp)))!=0)
+    {
+        // first fit algorithm and is not allocated
+        if(block_size>=asize && !GET_ALLOC(HDRP(bp))){
+            return bp;
+        }
+        bp = NEXT_BLKP(bp);
+
+    }
+    // there is no current block that can satisfy the memory requirement
+    return NULL;
+
+    
+
+}
+
+void place(void * bp, size_t asize)
+{
+
+    size_t oldSize = GET(HDRP(bp));
+    // mask out the allocated bit
+
+    // this will mask out the 
+    oldSize = oldSize &-2;
+    // this is the new size for the remaining block
+    size_t newsize = oldSize - asize;
+
+
+    
+
+    // update the size with the asize 
+    // this would be allocated 
+    PUT(HDRP(bp),PACK(asize,1));
+    // update the size on the footer for coalescing
+    PUT(FTRP(bp),PACK(asize,1));
+    // update the header block of the left over block
+    char * nextBlock = NEXT_BLKP(bp);
+    PUT(HDRP(nextBlock),newsize);
+    PUT(FTRP(nextBlock),newsize);
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+}
+
+
+
+
 
 
 
