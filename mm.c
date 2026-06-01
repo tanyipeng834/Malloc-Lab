@@ -84,7 +84,7 @@ static void * extend_heap(size_t words){
 
     size_t size;
     // make sure that the 
-    size =(words%2) ? (words+1) *WSIZE : words * WSIZE *2 ;
+    size =(words%2) ? (words+1) *WSIZE : words * WSIZE  ;
 
     if((long ) (bp = mem_sbrk(size))==-1){
         return NULL;
@@ -112,7 +112,7 @@ static void * extend_heap(size_t words){
  */
 void *mm_malloc(size_t size)
 {
-    size_t newsize = ALIGN(size + SIZE_T_SIZE);
+    size_t newsize = ALIGN(size + DSIZE);
     char * bp;
     size_t expandsize;
 
@@ -260,17 +260,24 @@ void place(void * bp, size_t asize)
     size_t newsize = oldSize - asize;
 
 
-    
 
-    // update the size with the asize 
-    // this would be allocated 
     PUT(HDRP(bp),PACK(asize,1));
     // update the size on the footer for coalescing
     PUT(FTRP(bp),PACK(asize,1));
     // update the header block of the left over block
+    
+    if(newsize>=MIN_BLOCK_LEN){
     char * nextBlock = NEXT_BLKP(bp);
     PUT(HDRP(nextBlock),newsize);
     PUT(FTRP(nextBlock),newsize);
+
+    }
+  
+
+
+    // update the size with the asize 
+    // this would be allocated 
+    
 
 
 
