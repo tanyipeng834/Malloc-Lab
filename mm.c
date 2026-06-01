@@ -214,7 +214,8 @@ void *mm_realloc(void *ptr, size_t size)
     newptr = mm_malloc(size);
     if (newptr == NULL)
       return NULL;
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
+    // get the size of the memory block minuz the header and footer
+    copySize = GET_SIZE(HDRP(oldptr)) -DSIZE;
     if (size < copySize)
       copySize = size;
     memcpy(newptr, oldptr, copySize);
@@ -227,8 +228,12 @@ void *mm_realloc(void *ptr, size_t size)
 void * find_fit(size_t asize)
 {
     // first block in the 
-    char * bp = heaplist_p + WSIZE;
+    char * bp = NEXT_BLKP(heaplist_p);
     size_t block_size;
+    // using best fit algoritm
+    // get largest possible number for size_t
+    size_t best_size = (size_t)-1;
+    void * best_bp = NULL;
 
 
 
@@ -236,13 +241,22 @@ void * find_fit(size_t asize)
     {
         // first fit algorithm and is not allocated
         if(block_size>=asize && !GET_ALLOC(HDRP(bp))){
-            return bp;
+            if(block_size<best_size){
+                best_size = block_size;
+                best_bp = bp;
+            }
+            // this is the case where 
+            if(block_size==asize){
+                best_bp = bp;
+                break;
+
+            }
         }
         bp = NEXT_BLKP(bp);
 
     }
     // there is no current block that can satisfy the memory requirement
-    return NULL;
+    return best_bp;
 
     
 
@@ -251,25 +265,31 @@ void * find_fit(size_t asize)
 void place(void * bp, size_t asize)
 {
 
-    size_t oldSize = GET(HDRP(bp));
+    size_t oldSize = GET_SIZE(HDRP(bp));
     // mask out the allocated bit
 
-    // this will mask out the 
-    oldSize = oldSize &-2;
+   
     // this is the new size for the remaining block
     size_t newsize = oldSize - asize;
 
 
 
-    PUT(HDRP(bp),PACK(asize,1));
-    // update the size on the footer for coalescing
-    PUT(FTRP(bp),PACK(asize,1));
+  
     // update the header block of the left over block
     
     if(newsize>=MIN_BLOCK_LEN){
+    PUT(HDRP(bp),PACK(asize,1));
+    // update the size on the footer for coalescing
+    PUT(FTRP(bp),PACK(asize,1));
     char * nextBlock = NEXT_BLKP(bp);
-    PUT(HDRP(nextBlock),newsize);
-    PUT(FTRP(nextBlock),newsize);
+    PUT(HDRP(nextBlock),PACK(newsize,0));
+    PUT(FTRP(nextBlock),PACK(newsize,0));
+
+    }
+    else{
+
+        PUT(HDRP(bp),PACK(oldSize,1));
+        PUT(FTRP(bp),PACK(oldSize,1));
 
     }
   
@@ -289,6 +309,19 @@ void place(void * bp, size_t asize)
 
 
 
+
+
+
+
+}
+
+int mm_check(void)
+{
+
+
+
+
+    return 0;
 
 
 
