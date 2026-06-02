@@ -13,6 +13,8 @@ void mm_checkheap(int lineno);
 
 static char* heaplist_p;
 
+static void* freelist_p;
+
 
 
 // Minimum block 

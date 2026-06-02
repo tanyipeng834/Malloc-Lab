@@ -271,6 +271,8 @@ void * find_fit(size_t asize)
 void place(void * bp, size_t asize)
 {
 
+
+    mm_checkheap(__LINE__);
     size_t oldSize = GET_SIZE(HDRP(bp));
     // mask out the allocated bit
 
@@ -342,6 +344,7 @@ int mm_check(void)
         if(GET(HDRP(bp))!=GET(FTRP(bp))){
             return -1;
         }
+
         // check if the payload area is aligned
         size_t payloadSize = GET_SIZE(HDRP(bp));
         // check if the payloads on the implicit list are aligned to 8 byte 
@@ -349,6 +352,17 @@ int mm_check(void)
         if(payloadSize%8!=0){
             return -1;
         }
+
+        // check previous and next block if they are both allocated since there
+        // should not be any allocated block
+        // given the case where one of the blocks is not allocated it will return error
+        if(!(GET_ALLOC(HDRP(bp)) || GET_ALLOC(HDRP(NEXT_BLKP(bp))))){
+
+            return -1;
+
+        }
+
+
 
 
 
@@ -377,7 +391,7 @@ void mm_checkheap(int lineno){
         exit(1);
     }
 
-    exit(0);
+    
     
 
 
