@@ -9,15 +9,20 @@ void * find_fit(size_t asize);
 void place(void * bp, size_t asize );
 static void * extend_heap(size_t words);
 void mm_checkheap(int lineno);
+static void insert_free_block(void * bp);
+static void remove_free_block(void * bp);
 
 
 static char* heaplist_p;
 
-static void* freelist_p;
+static void*seglist[14];
 
 
 
 // Minimum block 
+
+// 
+#define NUM_CLASSES 14
 #define MIN_BLOCK_LEN 16
 // header and footer size for 
 #define WSIZE 4
@@ -43,6 +48,12 @@ static void* freelist_p;
 
 #define NEXT_BLKP(bp) ((char*)(bp) +GET_SIZE(HDRP((bp))))
 #define PREV_BLKP(bp) ((char*)(bp) - GET_SIZE((char*) bp -DSIZE))
+// this is to define
+#define NEXT_FBLKP(bp) (*(void **)(bp))
+
+
+#define PREV_FBLKP(bp) (*(void **)((char*)(bp)+sizeof(void *)))
+
 
 #define CHECKHEAP(lineno) printf("%s\n",__func__); mm_checkheap(__LINE__);
 /* 
@@ -60,5 +71,5 @@ typedef struct {
 
 extern team_t team;
 
-static char * heaplist_p;
+
 

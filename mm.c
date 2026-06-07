@@ -52,6 +52,9 @@ int mm_init(void)
     
     // given that we start the allocator at a page boundary 
     // we would allocate 4 bytes for the padding, 4 bytes for prologue header and epilogue header
+    for ( int i =0;i<NUM_CLASSES;i++){
+        seglist[i]= NULL;
+    }
    if ((heaplist_p=mem_sbrk(4*WSIZE))== (void *)-1){
     return -1;
 
@@ -68,6 +71,8 @@ int mm_init(void)
    if(extend_heap(CHUNKSIZE/WSIZE)==NULL){
     return -1;
    }
+   // points to the initial free list
+   
 
    return 0;
 
@@ -159,14 +164,22 @@ static void* coalesce(void * bp){
     // case 1 where both the next block and previous block are
     // allocated
     if(prev_alloc && next_alloc ){
+        // when the block is freed just insert this at the start of 
+        // the list
+        insert_free_block(bp);
         return bp;
     }
     // case 2 where the next block is free
 
     else if(prev_alloc && !next_alloc){
+
+        remove_free_block(NEXT_BLKP(bp));
+        
        block_size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
        PUT(HDRP(bp),PACK(block_size,0));
        PUT(FTRP(bp),PACK(block_size,0));
+
+       insert_free_block(bp);
 
 
 
@@ -176,10 +189,12 @@ static void* coalesce(void * bp){
 
     else if(!prev_alloc && next_alloc){
         // adding the block size from the previous block
+        remove_free_block(PREV_BLKP(bp));
         block_size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)),PACK(block_size,0));
         PUT(FTRP(bp),PACK(block_size,0));
         bp = PREV_BLKP(bp);
+        insert_free_block(bp);
 
 
         
@@ -189,11 +204,14 @@ static void* coalesce(void * bp){
 
     else
     {   // for this case, we have the previous and next block which is free
+
+        remove_free_block(PREV_BLKP(bp));
+        remove_free_block(NEXT_BLKP(bp));
         block_size +=(GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(HDRP(NEXT_BLKP(bp))));
         PUT(HDRP(PREV_BLKP(bp)),PACK(block_size,0));
         PUT(FTRP(NEXT_BLKP(bp)),PACK(block_size,0));
         bp = PREV_BLKP(bp);
-
+        insert_free_block(bp);
 
 
 
@@ -234,7 +252,8 @@ void *mm_realloc(void *ptr, size_t size)
 void * find_fit(size_t asize)
 {
     // first block in the 
-    char * bp = NEXT_BLKP(heaplist_p);
+    //char * bp = NEXT_BLKP(heaplist_p);
+    void * bp;
     size_t block_size;
     // using best fit algoritm
     // get largest possible number for size_t
@@ -243,10 +262,11 @@ void * find_fit(size_t asize)
 
 
 
-    while((block_size=GET_SIZE(HDRP(bp)))!=0)
-    {
-        // first fit algorithm and is not allocated
-        if(block_size>=asize && !GET_ALLOC(HDRP(bp))){
+   for(bp=freelist_p;bp!=NULL;bp=NEXT_FBLKP(bp)){
+        // first fit algorithm and is not allocated(bp)
+
+        block_size = GET_SIZE(HDRP(bp));
+        if(block_size>=asize){
             if(block_size<best_size){
                 best_size = block_size;
                 best_bp = bp;
@@ -258,9 +278,10 @@ void * find_fit(size_t asize)
 
             }
         }
-        bp = NEXT_BLKP(bp);
-
+        
     }
+
+    
     // there is no current block that can satisfy the memory requirement
     return best_bp;
 
@@ -272,7 +293,9 @@ void place(void * bp, size_t asize)
 {
 
 
-    mm_checkheap(__LINE__);
+    //mm_checkheap(__LINE__);
+    remove_free_block(bp);
+    
     size_t oldSize = GET_SIZE(HDRP(bp));
     // mask out the allocated bit
 
@@ -292,6 +315,7 @@ void place(void * bp, size_t asize)
     char * nextBlock = NEXT_BLKP(bp);
     PUT(HDRP(nextBlock),PACK(newsize,0));
     PUT(FTRP(nextBlock),PACK(newsize,0));
+    insert_free_block(nextBlock);
 
     }
     else{
@@ -393,6 +417,42 @@ void mm_checkheap(int lineno){
 
     
     
+
+
+}
+
+
+static void insert_free_block(void * bp){
+
+    NEXT_FBLKP(bp) = freelist_p;
+    PREV_FBLKP(bp) = NULL;
+
+    if(freelist_p !=NULL){
+        PREV_FBLKP(freelist_p) = bp;
+    }
+
+    freelist_p = bp;
+
+
+}
+
+static void remove_free_block(void * bp){
+
+    void * prev = PREV_FBLKP(bp);
+    void * next  = NEXT_FBLKP(bp);
+
+    if(prev!=NULL){
+        NEXT_FBLKP(prev) =next;
+    }
+    else{
+        // remove the frist free list node
+        freelist_p = next;
+    }
+
+    if(next!=NULL){
+        PREV_FBLKP(next) = prev;
+    }
+
 
 
 }
