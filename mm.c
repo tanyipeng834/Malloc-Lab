@@ -55,6 +55,7 @@ int mm_init(void)
     for ( int i =0;i<NUM_CLASSES;i++){
         seglist[i]= NULL;
     }
+
    if ((heaplist_p=mem_sbrk(4*WSIZE))== (void *)-1){
     return -1;
 
@@ -259,10 +260,12 @@ void * find_fit(size_t asize)
     // get largest possible number for size_t
     size_t best_size = (size_t)-1;
     void * best_bp = NULL;
+    int class = get_class(asize);
 
+    
 
-
-   for(bp=freelist_p;bp!=NULL;bp=NEXT_FBLKP(bp)){
+for(int i =class;i<NUM_CLASSES;i++){
+   for(bp=seglist[i];bp!=NULL;bp=NEXT_FBLKP(bp)){
         // first fit algorithm and is not allocated(bp)
 
         block_size = GET_SIZE(HDRP(bp));
@@ -280,6 +283,7 @@ void * find_fit(size_t asize)
         }
         
     }
+}
 
     
     // there is no current block that can satisfy the memory requirement
@@ -424,19 +428,28 @@ void mm_checkheap(int lineno){
 
 static void insert_free_block(void * bp){
 
-    NEXT_FBLKP(bp) = freelist_p;
+    int bsize = GET_SIZE(HDRP(bp));
+    int class = get_class(bsize);
+
+   
+
+    NEXT_FBLKP(bp) = seglist[class];
     PREV_FBLKP(bp) = NULL;
 
-    if(freelist_p !=NULL){
-        PREV_FBLKP(freelist_p) = bp;
+    if(seglist[class] !=NULL){
+        PREV_FBLKP(seglist[class]) = bp;
     }
 
-    freelist_p = bp;
+    seglist[class] = bp;
 
 
 }
 
 static void remove_free_block(void * bp){
+
+    int bsize = GET_SIZE(HDRP(bp));
+    int class = get_class(bsize);
+    
 
     void * prev = PREV_FBLKP(bp);
     void * next  = NEXT_FBLKP(bp);
@@ -446,7 +459,7 @@ static void remove_free_block(void * bp){
     }
     else{
         // remove the frist free list node
-        freelist_p = next;
+        seglist[class] = next;
     }
 
     if(next!=NULL){
@@ -455,6 +468,22 @@ static void remove_free_block(void * bp){
 
 
 
+}
+
+static int get_class(size_t size){
+
+
+    int class = 0;
+
+    while(class <NUM_CLASSES-1 && size>16){
+        // since it is a power of 2 , we will do a right shift to do a divide by 2
+        size>>=1;
+        class ++;
+
+    }
+
+    return class;
+    
 }
 
 

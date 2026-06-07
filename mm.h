@@ -11,10 +11,12 @@ static void * extend_heap(size_t words);
 void mm_checkheap(int lineno);
 static void insert_free_block(void * bp);
 static void remove_free_block(void * bp);
+static int get_class(size_t size);
 
 
 static char* heaplist_p;
-
+// we will have 14 classes with the first class size which is 16 and then 
+// it goes up by the power of 2.
 static void*seglist[14];
 
 
