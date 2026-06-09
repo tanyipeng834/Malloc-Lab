@@ -33,15 +33,18 @@ static void*seglist[14];
 #define CHUNKSIZE (1<<12)
 // max function
 #define MAX(x,y) ((x)>(y)? (x) : (y))
+
+#define PREV_ALLOC_MASK 0x2
 // the size of the blocks have to be an mutiple of 8 and the last two bits are free which would be for the allocated
 // and the prev_allocated blocks
-#define PACK(size,allocated) ((size)| (allocated))
+#define PACK(size,allocated,prev_alloc) ((size)| (allocated) |(prev_alloc<<1) )
 // Get a pointer of any type and read and write a word to it
 #define GET(p) (*(unsigned int *)(p))
 #define PUT(p,val) (*(unsigned int *) (p) = (val))
 
 #define GET_SIZE(p) (GET(p)&~0x7)
 #define GET_ALLOC(p)(GET(p)&0x1)
+#define GET_PREV_ALLOC(p) ((GET(p) &PREV_ALLOC_MASK)>>1)
 
 
 

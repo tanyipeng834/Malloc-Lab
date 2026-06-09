@@ -62,11 +62,14 @@ int mm_init(void)
    }
    //4 bytes of padding for ensuring that header is 4 bytes aligned 
    PUT(heaplist_p,0);
-   PUT(heaplist_p+WSIZE,PACK(DSIZE,1));
-   PUT(heaplist_p+2*WSIZE,PACK(DSIZE,1));
-
-   PUT(heaplist_p+WSIZE*3,PACK(0,1));
-   // This is to advance the heaplist pointer to the start of the free list.
+   // prologue header
+   PUT(heaplist_p+WSIZE,PACK(DSIZE,1,1));
+   // prologue footer
+   PUT(heaplist_p+WSIZE*2,PACK(DSIZE,1,1));
+   // the epliogue footer which is beside the prologue footer which has
+   // prev_alloc as 1 
+   PUT(heaplist_p+WSIZE*3,PACK(0,1,1));
+   // This is to advance the heaplist pointer to the start of the prologue block
    heaplist_p +=2*WSIZE;
   // extened the heap by the default heap size
    if(extend_heap(CHUNKSIZE/WSIZE)==NULL){
@@ -88,6 +91,8 @@ static void * extend_heap(size_t words){
 
     char * bp;
 
+    
+
     size_t size;
     // make sure that the 
     size =(words%2) ? (words+1) *WSIZE : words * WSIZE  ;
@@ -96,11 +101,14 @@ static void * extend_heap(size_t words){
         return NULL;
     }
     // replace the old epilogue header
-    PUT(HDRP(bp),PACK(size,0));
+    
+
+
+    PUT(HDRP(bp),PACK(size,0,GET_PREV_ALLOC(bp)));
     // put the footer into the block
-    PUT(FTRP(bp),PACK(size,0));
-    // replace the new epilogue header
-    PUT(HDRP(NEXT_BLKP(bp)),PACK(0,1));
+    PUT(FTRP(bp),PACK(size,0,GET_PREV_ALLOC(bp)));
+    // replace the new epilogue header with prev_alloc is 0 cause there is a free block
+    PUT(HDRP(NEXT_BLKP(bp)),PACK(0,1,0));
 
     // coalesce the block with the possible previous free block.
 
@@ -150,9 +158,24 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *ptr)
 {
+    // ptr is the current bp that we are freeing
+    // so we have to go the next block and set prev_alloc to 0
+
+
+
     size_t size = GET_SIZE(HDRP(ptr));
-    PUT(HDRP(ptr),PACK(size,0));
-    PUT(FTRP(ptr),PACK(size,0));
+    size_t prev_alloc = GET_PREV_ALLOC(HDRP(ptr));
+
+
+
+    
+
+    PUT(HDRP(ptr),PACK(size,0,prev_alloc));
+    PUT(FTRP(ptr),PACK(size,0,prev_alloc));
+
+    void * next_block = NEXT_BLKP(ptr);
+
+    PUT(HDRP(next_block),GET(HDRP(next_block))&~PREV_ALLOC_MASK);
     coalesce(ptr);
 
 
