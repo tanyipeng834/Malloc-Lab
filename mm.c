@@ -104,9 +104,9 @@ static void * extend_heap(size_t words){
     
 
 
-    PUT(HDRP(bp),PACK(size,0,GET_PREV_ALLOC(bp)));
+    PUT(HDRP(bp),PACK(size,0,GET_PREV_ALLOC(HDRP(bp))));
     // put the footer into the block
-    PUT(FTRP(bp),PACK(size,0,GET_PREV_ALLOC(bp)));
+    PUT(FTRP(bp),PACK(size,0,GET_PREV_ALLOC(HDRP(bp))));
     // replace the new epilogue header with prev_alloc is 0 cause there is a free block
     PUT(HDRP(NEXT_BLKP(bp)),PACK(0,1,0));
 
@@ -130,8 +130,9 @@ static void * extend_heap(size_t words){
 void *mm_malloc(size_t size)
 {
 
-    
-    size_t newsize = ALIGN(size + DSIZE);
+    // allocated block would no longer need footer and dont
+    // have to align with the word size
+    size_t newsize = ALIGN(size + WSIZE);
     char * bp;
     size_t expandsize;
 
@@ -182,7 +183,8 @@ void mm_free(void *ptr)
 }
 
 static void* coalesce(void * bp){
-    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
+    // get prev_alloc from the header of the malloc block
+    size_t prev_alloc = GET_PREV_ALLOC(HDRP(bp));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t block_size = GET_SIZE(HDRP(bp));
     // case 1 where both the next block and previous block are
@@ -193,15 +195,16 @@ static void* coalesce(void * bp){
         insert_free_block(bp);
         return bp;
     }
-    // case 2 where the next block is free
+    // case 2 where the next block is free but prev block is not alloacted
 
     else if(prev_alloc && !next_alloc){
 
         remove_free_block(NEXT_BLKP(bp));
         
        block_size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
-       PUT(HDRP(bp),PACK(block_size,0));
-       PUT(FTRP(bp),PACK(block_size,0));
+       // prev block is not allocated
+       PUT(HDRP(bp),PACK(block_size,0,prev_alloc));
+       PUT(FTRP(bp),PACK(block_size,0,prev_alloc));
 
        insert_free_block(bp);
 
@@ -213,10 +216,12 @@ static void* coalesce(void * bp){
 
     else if(!prev_alloc && next_alloc){
         // adding the block size from the previous block
+
+        size_t prev_alloc = GET_PREV_ALLOC(HDRP(PREV_BLKP(bp)));
         remove_free_block(PREV_BLKP(bp));
         block_size += GET_SIZE(HDRP(PREV_BLKP(bp)));
-        PUT(HDRP(PREV_BLKP(bp)),PACK(block_size,0));
-        PUT(FTRP(bp),PACK(block_size,0));
+        PUT(HDRP(PREV_BLKP(bp)),PACK(block_size,0,prev_alloc));
+        PUT(FTRP(bp),PACK(block_size,0,prev_alloc));
         bp = PREV_BLKP(bp);
         insert_free_block(bp);
 
@@ -228,12 +233,13 @@ static void* coalesce(void * bp){
 
     else
     {   // for this case, we have the previous and next block which is free
-
+        size_t prev_alloc = GET_PREV_ALLOC(HDRP(PREV_BLKP(bp)));
         remove_free_block(PREV_BLKP(bp));
         remove_free_block(NEXT_BLKP(bp));
+
         block_size +=(GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(HDRP(NEXT_BLKP(bp))));
-        PUT(HDRP(PREV_BLKP(bp)),PACK(block_size,0));
-        PUT(FTRP(NEXT_BLKP(bp)),PACK(block_size,0));
+        PUT(HDRP(PREV_BLKP(bp)),PACK(block_size,0,prev_alloc));
+        PUT(FTRP(NEXT_BLKP(bp)),PACK(block_size,0,prev_alloc));
         bp = PREV_BLKP(bp);
         insert_free_block(bp);
 
@@ -263,7 +269,7 @@ void *mm_realloc(void *ptr, size_t size)
     if (newptr == NULL)
       return NULL;
     // get the size of the memory block minuz the header and footer.
-    copySize = GET_SIZE(HDRP(oldptr)) -DSIZE;
+    copySize = GET_SIZE(HDRP(oldptr)) -WSIZE;
     if (size < copySize)
       copySize = size;
     memcpy(newptr, oldptr, copySize);
@@ -330,25 +336,30 @@ void place(void * bp, size_t asize)
     // this is the new size for the remaining block
     size_t newsize = oldSize - asize;
 
-
+    size_t prev_alloc = GET_PREV_ALLOC(HDRP(bp));
 
   
-    // update the header block of the left over block
     
     if(newsize>=MIN_BLOCK_LEN){
-    PUT(HDRP(bp),PACK(asize,1));
-    // update the size on the footer for coalescing
-    PUT(FTRP(bp),PACK(asize,1));
+    // update the header and foooter of choose block
+    PUT(HDRP(bp),PACK(asize,1,prev_alloc));
+    // no need to have footer for footer optimization
     char * nextBlock = NEXT_BLKP(bp);
-    PUT(HDRP(nextBlock),PACK(newsize,0));
-    PUT(FTRP(nextBlock),PACK(newsize,0));
+    // as we are inserting at the head, so the prev block would always be allocated.
+
+    PUT(HDRP(nextBlock),PACK(newsize,0,1));
+    PUT(FTRP(nextBlock),PACK(newsize,0,1));
     insert_free_block(nextBlock);
 
     }
     else{
 
-        PUT(HDRP(bp),PACK(oldSize,1));
-        PUT(FTRP(bp),PACK(oldSize,1));
+        PUT(HDRP(bp),PACK(oldSize,1,prev_alloc));
+        // put next block as allocated
+        PUT(HDRP(NEXT_BLKP(bp)),GET(HDRP(NEXT_BLKP(bp)))|PREV_ALLOC_MASK);
+
+        
+        
 
     }
   
