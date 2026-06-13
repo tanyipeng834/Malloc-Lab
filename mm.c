@@ -278,7 +278,7 @@ void *mm_realloc(void *ptr, size_t size)
 }
 
 
-// 
+// this is the allocation algorithm.
 void * find_fit(size_t asize)
 {
     // first block in the 

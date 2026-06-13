@@ -25,7 +25,7 @@ static void*seglist[14];
 
 // 
 #define NUM_CLASSES 14
-#define MIN_BLOCK_LEN 16
+#define MIN_BLOCK_LEN 12
 // header and footer size for 
 #define WSIZE 4
 #define DSIZE 8
