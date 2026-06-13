@@ -132,7 +132,7 @@ void *mm_malloc(size_t size)
 
     // allocated block would no longer need footer and dont
     // have to align with the word size
-    size_t newsize = ALIGN(size + WSIZE);
+    size_t newsize = ALIGN(size+WSIZE);
     char * bp;
     size_t expandsize;
 
@@ -390,60 +390,164 @@ void place(void * bp, size_t asize)
 
 int mm_check(void)
 {
+    void *bp =NULL;
+    int free_blocks_heap = 0;
+    int free_blocks_list = 0;
 
-    void * bp;
     
-
-    // check the prologue header and footer
-
-    if(GET(HDRP(heaplist_p))!=GET(FTRP(heaplist_p))){
+    if (GET_SIZE(HDRP(heaplist_p)) != DSIZE || !GET_ALLOC(HDRP(heaplist_p))) {
+        printf("Bad prologue header\n");
         return -1;
     }
 
-    for(bp=NEXT_BLKP(heaplist_p);GET_SIZE(HDRP(bp))>0;bp=NEXT_BLKP(bp))
-    {
-        // check the case where the header and footer is aligned.
-        if(GET(HDRP(bp))!=GET(FTRP(bp))){
+    if (GET(HDRP(heaplist_p)) != GET(FTRP(heaplist_p))) {
+        printf("Prologue header/footer mismatch\n");
+        return -1;
+    }
+    /* 3. Check epilogue */
+    if (GET_SIZE(HDRP(bp)) != 0 || !GET_ALLOC(HDRP(bp))) {
+        printf("Bad epilogue header\n");
+        return -1;
+    }
+    /* 2. Walk the heap */
+    for (bp = NEXT_BLKP(heaplist_p);
+         GET_SIZE(HDRP(bp)) > 0;
+         bp = NEXT_BLKP(bp)) {
+
+        size_t size = GET_SIZE(HDRP(bp));
+        int alloc = GET_ALLOC(HDRP(bp));
+        int prev_alloc = GET_PREV_ALLOC(HDRP(bp));
+
+        /* Block within heap boundaries */
+        if ((char *)HDRP(bp) < (char *)mem_heap_lo() ||
+            (char *)HDRP(bp) > (char *)mem_heap_hi()) {
+            printf("Block header outside heap: %p\n", bp);
             return -1;
         }
 
-        // check if the payload area is aligned
-        size_t payloadSize = GET_SIZE(HDRP(bp));
-        // check if the payloads on the implicit list are aligned to 8 byte 
-        // boundaries
-        if(payloadSize%8!=0){
+      
+        
+        if ((size_t)bp % ALIGNMENT != 0) {
+            printf("Payload not aligned: %p\n", bp);
             return -1;
         }
 
-        // check previous and next block if they are both allocated since there
-        // should not be any allocated block
-        // given the case where one of the blocks is not allocated it will return error
-        if(!(GET_ALLOC(HDRP(bp)) || GET_ALLOC(HDRP(NEXT_BLKP(bp))))){
-
+       
+        if (size % ALIGNMENT != 0) {
+            printf("Block size not aligned: %p size %zu\n", bp, size);
             return -1;
-
         }
 
+        
+        if (size < MIN_BLOCK_LEN) {
+            printf("Block too small: %p size %zu\n", bp, size);
+            return -1;
+        }
 
+        /* Free blocks must have matching footer */
+        if (!alloc) {
+            free_blocks_heap++;
 
+            if (GET(HDRP(bp)) != GET(FTRP(bp))) {
+                printf("Free block header/footer mismatch: %p\n", bp);
+                return -1;
+            }
 
+            // no contigous free block
+            if (!GET_ALLOC(HDRP(NEXT_BLKP(bp))) &&
+                GET_SIZE(HDRP(NEXT_BLKP(bp))) > 0) {
+                printf("Two consecutive free blocks: %p and %p\n",
+                       bp, NEXT_BLKP(bp));
+                return -1;
+            }
+        }
 
+        // prev_alloc bit must match actual previous block allocation */
+        if (bp != NEXT_BLKP(heaplist_p)) {
+            int real_prev_alloc = GET_ALLOC(HDRP(PREV_BLKP(bp)));
 
-
-
-
+            if (prev_alloc != real_prev_alloc) {
+                printf("Bad prev_alloc bit at %p\n", bp);
+                return -1;
+            }
+        }
     }
 
-    
+    /* 3. Check epilogue */
+    if (GET_SIZE(HDRP(bp)) != 0 || !GET_ALLOC(HDRP(bp))) {
+        printf("Bad epilogue header\n");
+        return -1;
+    }
 
+    /* 4. Check every segregated free list */
+    for (int i = 0; i < NUM_CLASSES; i++) {
+        void *slow = seglist[i];
+        void *fast = seglist[i];
 
+        /* Cycle check using Floyd */
+        while (fast != NULL && NEXT_FBLKP(fast) != NULL) {
+            slow = NEXT_FBLKP(slow);
+            fast = NEXT_FBLKP(NEXT_FBLKP(fast));
 
+            if (slow == fast) {
+                printf("Cycle detected in free list %d\n", i);
+                return -1;
+            }
+        }
+
+        for (bp = seglist[i]; bp != NULL; bp = NEXT_FBLKP(bp)) {
+            free_blocks_list++;
+
+           
+            if ((char *)bp < (char *)mem_heap_lo() ||
+                (char *)bp > (char *)mem_heap_hi()) {
+                printf("Free list pointer outside heap: %p\n", bp);
+                return -1;
+            }
+
+            /* Free list cannot contain allocated block */
+            if (GET_ALLOC(HDRP(bp))) {
+                printf("Allocated block in free list: %p\n", bp);
+                return -1;
+            }
+
+            /* Free block must belong to correct size class */
+            int correct_class = get_class(GET_SIZE(HDRP(bp)));
+            if (correct_class != i) {
+                printf("Free block %p in wrong class %d, should be %d\n",
+                       bp, i, correct_class);
+                return -1;
+            }
+
+            /* prev pointer consistency */
+            if (NEXT_FBLKP(bp) != NULL &&
+                PREV_FBLKP(NEXT_FBLKP(bp)) != bp) {
+                printf("Next/prev mismatch at %p\n", bp);
+                return -1;
+            }
+
+            if (PREV_FBLKP(bp) != NULL &&
+                NEXT_FBLKP(PREV_FBLKP(bp)) != bp) {
+                printf("Prev/next mismatch at %p\n", bp);
+                return -1;
+            }
+
+            /* Header/footer match for free-list block */
+            if (GET(HDRP(bp)) != GET(FTRP(bp))) {
+                printf("Free-list block header/footer mismatch: %p\n", bp);
+                return -1;
+            }
+        }
+    }
+
+   
+    if (free_blocks_heap != free_blocks_list) {
+        printf("Free block count mismatch: heap=%d list=%d\n",
+               free_blocks_heap, free_blocks_list);
+        return -1;
+    }
 
     return 0;
-
-
-
-
 }
 
 void mm_checkheap(int lineno){
